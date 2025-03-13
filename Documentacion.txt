@@ -1,0 +1,117 @@
+Documentación de la Base de Datos - Gestión de Clínica
+1. Descripción General
+    La base de datos Gestion_de_Clinica almacena y gestiona información relacionada con la atención médica en una clínica.
+    Incluye el registro de pacientes, médicos, turnos, pagos y estados asociados a cada entidad. 
+    Su diseño facilita la trazabilidad y gestión de turnos, pagos y consultas médicas.
+
+2. Diseño de la Base de Datos
+    2.1 Tablas Principales
+    Pacientes: Almacena los datos personales de los pacientes, vinculándolos con una obra social.
+    Médicos: Contiene información sobre los médicos y la especialidad que ejercen.
+    Especialidades: Define las diferentes especialidades médicas disponibles.
+    Turnos: Registra los turnos asignados a los pacientes.
+    Estado de Turnos: Indica el estado de un turno (Pendiente, Confirmado, Cancelado).
+    Historias Clínicas: Registra las observaciones médicas de los turnos atendidos.
+    Pagos: Gestiona los pagos realizados por los pacientes.
+    Estados de Pagos: Indica el estado de un pago (Pendiente, Pagado, Anulado).
+    Medios de Pago: Tipos de pago aceptados (Efectivo, Tarjeta, Transferencia).
+    Obras Sociales: Información sobre las obras sociales disponibles.
+
+3. Restricciones y Validaciones
+Restricciones ÚNICAS (UNIQUE)
+    dni en la tabla Pacientes para evitar duplicados.
+    Combinación de id_paciente, id_medico y fecha_turno en Turnos para evitar turnos duplicados.
+    Restricciones CHECK
+    fecha_nacimiento en Pacientes no puede ser mayor a la fecha actual.
+    monto en Pagos debe ser mayor a 0.
+    Transacciones en Procedimientos Almacenados
+        Se implementan en sp_InsertarTurno para asegurar la integridad de los turnos.
+
+4. Procedimientos Almacenados
+    4.1 sp_InsertarTurno - Insertar un turno validando existencia
+
+        ALTER PROCEDURE [dbo].[sp_InsertarTurno]
+            @fecha_turno DATE, 
+            @id_paciente INT, 
+            @id_medico INT, 
+            @id_estado_turno INT
+        AS
+        BEGIN
+            SET NOCOUNT ON;
+
+        -- Verificar si ya existe un turno para el mismo paciente y médico en la misma fecha
+            IF EXISTS (
+                SELECT 1 FROM Turnos 
+                WHERE id_paciente = @id_paciente 
+                AND id_medico = @id_medico 
+                AND fecha_turno = @fecha_turno
+            )
+            BEGIN
+                PRINT 'Error: Ya existe un turno para este paciente con este médico en la misma fecha.';
+            RETURN;
+            END;
+
+        -- Insertar nuevo turno
+        INSERT INTO Turnos (fecha_turno, id_paciente, id_medico, id_estado_turno)
+        VALUES (@fecha_turno, @id_paciente, @id_medico, @id_estado_turno);
+
+        PRINT 'Turno registrado correctamente.';
+        END;
+
+    4.2 sp_RegistrarPago - Registrar pago de un turno
+
+        CREATE PROCEDURE sp_RegistrarPago
+            @id_turno INT,
+            @monto DECIMAL(10,2),
+            @id_medio_pago INT,
+            @id_estado_pago INT
+        AS
+        BEGIN
+            SET NOCOUNT ON;
+
+            -- Validar que el turno exista
+            IF NOT EXISTS (SELECT 1 FROM Turnos WHERE id_turno = @id_turno)
+            BEGIN
+                PRINT 'Error: El turno especificado no existe.';
+                RETURN;
+            END;
+
+            -- Insertar el pago
+            INSERT INTO Pagos (id_turno, monto, id_medio_pago, id_estado_pago)
+             VALUES (@id_turno, @monto, @id_medio_pago, @id_estado_pago);
+
+             PRINT 'Pago registrado correctamente.';
+        END;
+
+5. Índices para Optimización
+-- Índice en la tabla Turnos para mejorar las búsquedas por paciente y fecha
+    CREATE INDEX idx_turnos_paciente_fecha
+    ON Turnos (id_paciente, fecha_turno);
+
+-- Índice en la tabla Médicos para búsqueda rápida por especialidad
+    CREATE INDEX idx_medicos_especialidad
+    ON Medicos (id_especialidad);
+
+Estos índices ayudan a mejorar el rendimiento de las consultas al reducir el tiempo de 
+búsqueda en grandes volúmenes de datos.
+
+6. Ejemplo de Uso
+Consultar turnos de un paciente
+    SELECT T.id_turno, T.fecha_turno, M.nombre_med, M.apellido_med, E.estado
+    FROM Turnos T
+    JOIN Medicos M ON T.id_medico = M.id_medico
+    JOIN Estado_de_Turnos E ON T.id_estado_turno = E.id_estado_turno
+    WHERE T.id_paciente = @id_paciente;
+
+Ver pagos pendientes
+    SELECT P.id_pago, P.monto, M.medio_pago, E.nombre_estado_pago
+    FROM Pagos P
+    JOIN Medios_de_Pagos M ON P.id_medio_pago = M.id_medio_pago
+    JOIN Estados_de_Pagos E ON P.id_estado_pago = E.id_estado_pago
+    WHERE E.nombre_estado_pago = 'Pendiente';
+
+7. Conclusión
+    La base de datos Gestión de Clínica permite gestionar eficientemente la información de pacientes,
+    médicos, turnos y pagos. Gracias a las validaciones, restricciones y optimizaciones implementadas, 
+    se garantiza la integridad de los datos y se mejora el rendimiento de las consultas.
+    
